@@ -1,41 +1,52 @@
 #!/usr/bin/python3.9
 
 #import required libraries
-from openpyxl import Workbook, load_workbook
-from openpyxl.styles import PatternFill, Font
-from openpyxl.styles.borders import Border, Side
+import datetime
 
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import PatternFill, Font, Color
+from openpyxl.styles.borders import Border, Side
+import locale
+import pandas as pd
 #openpyxl handles excelsheet
 wb = Workbook()
 ws = wb.active
 
+locale.setlocale(locale.LC_ALL, 'en_US.utf8')
+
 
 class Generate_Balance_Sheet:
 
-    def __init__(self, **kwargs):
-        self.kwargs = kwargs
+    def __init__(self, *args):
+        self.args = args
         self.excel_data = list()
 
     def read_excels(self):
-        excel_pathlist = [('/home/sindhukumari/PycharmProjects/Upwork/Download/Open_Status_Report.XLSX', 47, 6),
-                          ('/home/sindhukumari/PycharmProjects/Upwork/Download/Balance_sheet.XLSX', 34, 2)]
-        for path, r, c in excel_pathlist:
-            wb_obj = load_workbook(path)
-            sheet_obj = wb_obj.active
-
-            cell_obj = sheet_obj.cell(row=r, column=c)
-            self.excel_data.append(cell_obj.value)
+        df = pd.read_excel('/home/sindhukumari/PycharmProjects/Upwork/Download/Open_Status_Report.XLSX')
+        self.excel_data.append(df.fillna(0).values.tolist()[-1][5])
+        df = pd.read_excel('/home/sindhukumari/PycharmProjects/Upwork/Download/Balance_sheet.XLSX')
+        index_date = 0
+        sub_res =[]
+        for i in df.fillna(0).values.tolist():
+            if self.args[3] in i: #example : datetime.datetime(2021, 5, 31, 0, 0)
+                index_date = i.index(self.args[3])
+            if self.args[2] in i: #example: 'Accounts Payable - Trade'
+                sub_res.append(i)
+        self.excel_data.append(sub_res[-1][index_date])
 
     def generate_excel(self):
-        # ***********SET BACKGROUND COLOR********************************#
-        for rows in ws.iter_rows(min_row=1, max_row=34, min_col=1, max_col=8):
+        month = self.args[3].month, self.args[3].strftime("%B")
+        year = self.args[3].year
+
+        # ***********SET BACKGROUND COLOR FOR THE HEADER********************************#
+        for rows in ws.iter_rows( min_col=2, max_col=6):  #min_row=1, max_row=1,
             for cell in rows:
-                cell.fill = PatternFill(start_color='EEEEEF', end_color='EEEEEF', fill_type="solid")
+                cell.fill = PatternFill(start_color='FFFFFF', fill_type="solid") #end_color='FFFFFF',
 
         # **************SET BOLD & SIZE & STYLE*************************#
-        fontStyle = Font(name='Tahoma', size=20, bold=True, italic=False, vertAlign=None,
+        fontStyle = Font(name='Tahoma', size=15, bold=True, italic=False, vertAlign=None,
                                  underline='none', strike=False, color='FF000000')
-        ws.cell(row=1, column=3, value= "BALANCE SHEET RECONCILIATION").font = fontStyle
+        ws.cell(row=1, column=3, value= "Balance Sheet Reconciliation").font = fontStyle
 
         ws['A3'] = "Entity ID"
         ws['A4'] = "Account Number"
@@ -60,11 +71,11 @@ class Generate_Balance_Sheet:
 
         #***************** FIX THE CELL WIDTH & HEIGHT********************#
         ws.cell(row=1, column=1).value = ""
-        ws.row_dimensions[1].height = 30
+        ws.row_dimensions[1].height = 20
         ws.cell(row=2, column=1).value = ""
         ws.column_dimensions['A'].width = 40
         ws.cell(row=2, column=2).value = ""
-        ws.column_dimensions['B'].width = 20
+        ws.column_dimensions['B'].width = 30
         ws.cell(row=2, column=3).value = ""
         ws.column_dimensions['C'].width = 15
         ws.cell(row=2, column=4).value = ""
@@ -109,6 +120,26 @@ class Generate_Balance_Sheet:
         ws['A31'].font = Font(bold=True)
 
         #*************SET BORDER*********************#
+        four_side_border = Border(right=Side(style='thin'),
+                                  left=Side(style='thin'),
+                                  top=Side(style='thin'),
+                                  bottom=Side(style='thin'))
+        top_bottom_header = Border(top=Side(style='thick'),
+                             bottom=Side(style='thick'), diagonalUp=True, diagonalDown=True,
+                 outline=True, start=None, end=None)
+        for i in range(1, 8):
+            ws.cell(row=1, column=i).border = top_bottom_header
+
+        bottom_border = Border(bottom=Side(style='thick'))
+        for i in range(1, 8):
+            ws.cell(row=31, column=i).border = bottom_border
+
+        '''
+        Period (1-12); Month; Account Description;Account number;Entity ID name
+        ACCOUNT=20100000 and ENTITYID='HWPENN' and description="Accounts Payable - Trade"
+        Period (1-12); Month; Account Description;Account number;Entity ID name
+        '''
+
         thin_border = Border(bottom=Side(style='thin'))
         ws.cell(row=3, column=2).border = thin_border
         ws.cell(row=4, column=2).border = thin_border
@@ -127,13 +158,40 @@ class Generate_Balance_Sheet:
         ws.cell(row=29, column=7).border = thin_border
 
         #*********************PASS VALUES**********************#
-        ws['E12'] = self.excel_data[0] #OPEN REPORT
-        ws['G15'] = self.excel_data[0] #OPEN REPORT
-        ws['G8']  = self.excel_data[1] #BALANCE SHEET
-        ws['G17'] = self.excel_data[1] - self.excel_data[0]
-        wb.save("Balance-Sheet-Reconciliation.xlsx")
+        ws['B3'] = self.args[0]
+        ws['B4'] = self.args[1]
+        ws['B5'] = self.args[2]
+        ws['B6'] = month[1]+'-'+str(year)
+        #*************OPEN REPORT*************************************************#
+        if self.excel_data[0] < 0:
+            negative_amount = "("+str(locale.currency(abs(self.excel_data[0]), grouping=True))+")"
+            ws['E12'] = negative_amount
+            ws['E12'].font = Font(color='00FF0000')
+            ws['G15'] = negative_amount
+            ws['G15'].font = Font(color='00FF0000')
+        else:
+            ws['E12'] = locale.currency(self.excel_data[0], grouping=True) #OPEN REPORT
+            ws['G15'] = locale.currency(self.excel_data[0], grouping=True) #Subsidiary
 
-gObj = Generate_Balance_Sheet()
+        #********************************BALANCE SHEET*************************************#
+        if self.excel_data[1] < 0:
+            ws['G8'] = "("+str(locale.currency(abs(self.excel_data[1]),grouping=True))+")"# Balance Sheet
+            ws['G8'].font = Font(color='00FF0000')
+        else:
+            ws['G8'] = locale.currency(self.excel_data[1], grouping=True)
+
+        #*********************************VARIANCE*******************************************#
+        variance = self.excel_data[1] - self.excel_data[0]
+        if variance < 0:
+            ws['G17'] = "("+str(locale.currency(abs(variance), grouping=True)) +")" #Variance
+            ws['G17'].font = Font(color='00FF0000')
+        else:
+            ws['G17'] = locale.currency(variance, grouping=True)
+
+        filename = str(month[0])+'. '+month[1]+' '+str(year)+' '+self.args[1]+' - '+self.args[2]+' - '+self.args[4]+'.xlsx'
+        wb.save(filename)
+
+gObj = Generate_Balance_Sheet('****', '*****', '****', datetime.datetime(2021, 5, 31, 0, 0), '****')
 gObj.read_excels()
 gObj.generate_excel()
 
